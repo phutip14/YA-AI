@@ -164,6 +164,59 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 bot.remove_command('help')
 
+async def forward_to_hermes_thread(guild, author, origin_channel, question_text):
+    """Forward an unanswered question to #bot-talk thread 'Hermes'."""
+    if not guild:
+        return
+    try:
+        # 1. Find bot-talk channel (case-insensitive)
+        bot_talk_channel = None
+        for ch in guild.text_channels:
+            if ch.name.lower() in ["bot-talk", "bottalk", "bot_talk"]:
+                bot_talk_channel = ch
+                break
+
+        if not bot_talk_channel:
+            print("[Hermes] #bot-talk channel not found in guild.")
+            return
+
+        # 2. Find thread named Hermes
+        hermes_thread = None
+        for thread in bot_talk_channel.threads:
+            if "hermes" in thread.name.lower():
+                hermes_thread = thread
+                break
+
+        if not hermes_thread:
+            # Check archived threads
+            try:
+                async for thread in bot_talk_channel.archived_threads(limit=50):
+                    if "hermes" in thread.name.lower():
+                        hermes_thread = thread
+                        break
+            except Exception as e:
+                print(f"[Hermes] Error checking archived threads: {e}")
+
+        embed = discord.Embed(
+            title="❓ ขอข้อมูลเพิ่มเติมจาก Hermes",
+            description=question_text,
+            color=discord.Color.gold(),
+            timestamp=datetime.datetime.now(datetime.timezone.utc)
+        )
+        embed.add_field(name="👤 ผู้ถาม", value=f"{author.mention} (`{author.display_name}`)", inline=True)
+        embed.add_field(name="📍 ถามจากห้อง", value=origin_channel.mention if hasattr(origin_channel, 'mention') else str(origin_channel), inline=True)
+        embed.set_footer(text="ส่งอัตโนมัติโดย CBTU YA AI -> Hermes")
+
+        if hermes_thread:
+            await hermes_thread.send(content="🔔 **[CBTU YA AI -> Hermes]** มีคำถามใหม่ที่ยังไม่มีในฐานความรู้ CBTU ครับ:", embed=embed)
+            print(f"[Hermes] Successfully forwarded question to thread '{hermes_thread.name}' in #{bot_talk_channel.name}")
+        else:
+            # If thread not found yet, send to bot-talk channel directly
+            await bot_talk_channel.send(content="🔔 **[CBTU YA AI -> Hermes]** (ไม่พบ Thread Hermes จึงส่งในห้องนี้):", embed=embed)
+            print(f"[Hermes] Thread 'Hermes' not found. Sent to #{bot_talk_channel.name} directly.")
+    except Exception as e:
+        print(f"[Hermes] Failed to forward question: {e}")
+
 def get_chat_session(channel_id):
     """Retrieve or create an async chat session with knowledge-injected instructions."""
     if channel_id not in chat_sessions:
@@ -388,7 +441,28 @@ async def on_message(message):
                     response = await chat.send_message(contents)
 
             response_text = response.text
-            chunks = split_markdown(response_text, max_chars=2000)
+            
+            # Check for [ASK_HERMES: question] tag
+            import re
+            hermes_match = re.search(r"\[ASK_HERMES:\s*([^\]]+?)\s*\]", response_text, re.IGNORECASE)
+            
+            clean_response = response_text
+            if hermes_match:
+                hermes_question = hermes_match.group(1).strip()
+                clean_response = re.sub(r"\[ASK_HERMES:\s*[^\]]+?\s*\]", "", response_text, flags=re.IGNORECASE).strip()
+                
+                # Forward to Hermes thread in #bot-talk in the background
+                if message.guild:
+                    bot.loop.create_task(
+                        forward_to_hermes_thread(
+                            guild=message.guild,
+                            author=message.author,
+                            origin_channel=message.channel,
+                            question_text=hermes_question
+                        )
+                    )
+            
+            chunks = split_markdown(clean_response, max_chars=2000)
             for chunk in chunks:
                 await message.reply(chunk)
 
