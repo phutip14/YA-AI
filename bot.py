@@ -169,26 +169,35 @@ async def forward_to_hermes_thread(guild, author, origin_channel, question_text)
     if not guild:
         return
     try:
-        # 1. Find bot-talk channel (case-insensitive)
+        # 1. Find bot-talk channel (fuzzy match)
         bot_talk_channel = None
         for ch in guild.text_channels:
-            if ch.name.lower() in ["bot-talk", "bottalk", "bot_talk"]:
+            name_clean = ch.name.lower().replace("-", "").replace("_", "")
+            if "bottalk" in name_clean or "bot" in name_clean:
                 bot_talk_channel = ch
-                break
+                if "bottalk" in name_clean:
+                    break
 
         if not bot_talk_channel:
-            print("[Hermes] #bot-talk channel not found in guild.")
+            print(f"[Hermes] #bot-talk channel not found in guild '{guild.name}'.")
             return
 
-        # 2. Find thread named Hermes
+        # 2. Find thread named Hermes (check active threads first)
         hermes_thread = None
         for thread in bot_talk_channel.threads:
             if "hermes" in thread.name.lower():
                 hermes_thread = thread
                 break
 
+        # Check all active threads in guild
         if not hermes_thread:
-            # Check archived threads
+            for thread in guild.threads:
+                if "hermes" in thread.name.lower():
+                    hermes_thread = thread
+                    break
+
+        # Check archived threads in bot_talk_channel
+        if not hermes_thread:
             try:
                 async for thread in bot_talk_channel.archived_threads(limit=50):
                     if "hermes" in thread.name.lower():
@@ -196,6 +205,18 @@ async def forward_to_hermes_thread(guild, author, origin_channel, question_text)
                         break
             except Exception as e:
                 print(f"[Hermes] Error checking archived threads: {e}")
+
+        # If Hermes thread still not found, automatically create it in bot-talk!
+        if not hermes_thread:
+            try:
+                hermes_thread = await bot_talk_channel.create_thread(
+                    name="Hermes",
+                    auto_archive_duration=1440,
+                    type=discord.ChannelType.public_thread
+                )
+                print(f"[Hermes] Created new thread 'Hermes' in #{bot_talk_channel.name}")
+            except Exception as thread_err:
+                print(f"[Hermes] Could not create thread 'Hermes': {thread_err}")
 
         embed = discord.Embed(
             title="❓ ขอข้อมูลเพิ่มเติมจาก Hermes",
@@ -211,9 +232,8 @@ async def forward_to_hermes_thread(guild, author, origin_channel, question_text)
             await hermes_thread.send(content="🔔 **[CBTU YA AI -> Hermes]** มีคำถามใหม่ที่ยังไม่มีในฐานความรู้ CBTU ครับ:", embed=embed)
             print(f"[Hermes] Successfully forwarded question to thread '{hermes_thread.name}' in #{bot_talk_channel.name}")
         else:
-            # If thread not found yet, send to bot-talk channel directly
-            await bot_talk_channel.send(content="🔔 **[CBTU YA AI -> Hermes]** (ไม่พบ Thread Hermes จึงส่งในห้องนี้):", embed=embed)
-            print(f"[Hermes] Thread 'Hermes' not found. Sent to #{bot_talk_channel.name} directly.")
+            await bot_talk_channel.send(content="🔔 **[CBTU YA AI -> Hermes]** (ส่งคำถามเข้าห้อง bot-talk):", embed=embed)
+            print(f"[Hermes] Sent question directly to #{bot_talk_channel.name}")
     except Exception as e:
         print(f"[Hermes] Failed to forward question: {e}")
 
@@ -442,25 +462,35 @@ async def on_message(message):
 
             response_text = response.text
             
-            # Check for [ASK_HERMES: question] tag
+            # Check for [ASK_HERMES: question] tag or semantic detection
             import re
             hermes_match = re.search(r"\[ASK_HERMES:\s*([^\]]+?)\s*\]", response_text, re.IGNORECASE)
             
             clean_response = response_text
+            should_forward = False
+            hermes_question = clean_prompt
+            
             if hermes_match:
                 hermes_question = hermes_match.group(1).strip()
                 clean_response = re.sub(r"\[ASK_HERMES:\s*[^\]]+?\s*\]", "", response_text, flags=re.IGNORECASE).strip()
+                should_forward = True
+            elif any(phrase in response_text for phrase in [
+                "ยังไม่มีข้อมูล", "ยังไม่ได้มีการสรุป", "ยังไม่ได้มี", "ไม่พบข้อมูลในคลัง", 
+                "ไม่มีในคลังข้อมูล", "ยังไม่มีตาราง", "bot-talk", "Hermes"
+            ]):
+                should_forward = True
+                hermes_question = f"คำถามจากผู้ใช้: {clean_prompt}\n(บอตตอบว่า: {response_text[:200]}...)"
                 
-                # Forward to Hermes thread in #bot-talk in the background
-                if message.guild:
-                    bot.loop.create_task(
-                        forward_to_hermes_thread(
-                            guild=message.guild,
-                            author=message.author,
-                            origin_channel=message.channel,
-                            question_text=hermes_question
-                        )
+            if should_forward and message.guild:
+                print(f"[Hermes Trigger] Forwarding question to Hermes: '{clean_prompt}'")
+                bot.loop.create_task(
+                    forward_to_hermes_thread(
+                        guild=message.guild,
+                        author=message.author,
+                        origin_channel=message.channel,
+                        question_text=hermes_question
                     )
+                )
             
             chunks = split_markdown(clean_response, max_chars=2000)
             for chunk in chunks:
