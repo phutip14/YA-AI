@@ -1,4 +1,4 @@
-﻿import os
+import os
 import json
 import io
 import datetime
@@ -35,8 +35,8 @@ else:
     client = genai.Client(api_key=GEMINI_API_KEY)
 
 # Model Configuration
-MODEL_NAME = os.getenv("MODEL_NAME", "gemini-2.5-flash")
-FALLBACK_MODEL_NAME = os.getenv("FALLBACK_MODEL_NAME", "gemini-2.0-flash")
+MODEL_NAME = os.getenv("MODEL_NAME", "gemini-3.5-flash")
+FALLBACK_MODEL_NAME = os.getenv("FALLBACK_MODEL_NAME", "gemini-3.5-flash-lite")
 
 # Store chat sessions per Discord channel/DM to maintain context (Async sessions)
 chat_sessions = {}
@@ -364,32 +364,28 @@ async def on_message(message):
                     try:
                         response = await chat.send_message(contents)
                     except Exception as e:
-                        if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
-                            print(f"[Warning] Main model {MODEL_NAME} quota exhausted. Falling back to {FALLBACK_MODEL_NAME}...")
-                            chat_models[message.channel.id] = FALLBACK_MODEL_NAME
-                            chat_sessions[message.channel.id] = client.aio.chats.create(
-                                model=FALLBACK_MODEL_NAME,
-                                config=types.GenerateContentConfig(system_instruction=get_full_system_instruction())
-                            )
-                            chat = chat_sessions[message.channel.id]
-                            response = await chat.send_message(contents)
-                        else:
-                            raise e
-            except discord.Forbidden:
-                try:
-                    response = await chat.send_message(contents)
-                except Exception as e:
-                    if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
-                        print(f"[Warning] Main model {MODEL_NAME} quota exhausted. Falling back to {FALLBACK_MODEL_NAME}...")
-                        chat_models[message.channel.id] = FALLBACK_MODEL_NAME
+                        print(f"[Warning] API error with {chat_models.get(message.channel.id, MODEL_NAME)}: {e}. Switching model...")
+                        target_model = FALLBACK_MODEL_NAME if chat_models.get(message.channel.id) == MODEL_NAME else MODEL_NAME
+                        chat_models[message.channel.id] = target_model
                         chat_sessions[message.channel.id] = client.aio.chats.create(
-                            model=FALLBACK_MODEL_NAME,
+                            model=target_model,
                             config=types.GenerateContentConfig(system_instruction=get_full_system_instruction())
                         )
                         chat = chat_sessions[message.channel.id]
                         response = await chat.send_message(contents)
-                    else:
-                        raise e
+            except discord.Forbidden:
+                try:
+                    response = await chat.send_message(contents)
+                except Exception as e:
+                    print(f"[Warning] Error on retry: {e}. Switching model...")
+                    target_model = FALLBACK_MODEL_NAME if chat_models.get(message.channel.id) == MODEL_NAME else MODEL_NAME
+                    chat_models[message.channel.id] = target_model
+                    chat_sessions[message.channel.id] = client.aio.chats.create(
+                        model=target_model,
+                        config=types.GenerateContentConfig(system_instruction=get_full_system_instruction())
+                    )
+                    chat = chat_sessions[message.channel.id]
+                    response = await chat.send_message(contents)
 
             response_text = response.text
             chunks = split_markdown(response_text, max_chars=2000)
@@ -401,7 +397,7 @@ async def on_message(message):
         except Exception as e:
             print(f"Error handling message: {e}")
             try:
-                await message.reply("⚠️ เกิดข้อผิดพลาดในการประมวลผลคำถาม โปรดลองใหม่อีกครั้งครับ")
+                await message.reply(f"⚠️ เกิดข้อผิดพลาดในการประมวลผลคำถาม: `{e}`")
             except discord.Forbidden:
                 pass
 
