@@ -1,57 +1,43 @@
-# Discord AI Chatbot (Gemini) 🤖
+﻿# CBTU YA AI Assistant 🤖
 
-โปรเจกต์บอต Discord เชื่อมโยงกับ Gemini API เพื่อทำหน้าที่เป็น AI Chatbot โต้ตอบแบบมีบริบทการคุยต่อเนื่อง (Multi-turn conversation)
+บอต AI อัจฉริยะประจำศูนย์บริหารการจัดการองค์กรสากล (CBTU) คณะวิศวกรรมศาสตร์ มหาวิทยาลัยมหิดล ขับเคลื่อนด้วย Google Gemini API และระบบฐานความรู้ไดนามิก (Dynamic Knowledge Base)
 
 ---
 
-## 🛠️ วิธีการติดตั้งและรันบอต
+## 🌟 จุดเด่นและความสามารถ
+- **ฐานความรู้เฉพาะทาง (CBTU Knowledge Base)**: บอทอ่านไฟล์ข้อมูลความรู้จากโฟลเดอร์ `knowledge/` โดยอัตโนมัติ ตอบคำถามได้ถูกต้องแม่นยำ
+- **รองรับการส่งไฟล์และเอกสาร (Multimodal Support)**: สามารถอัปโหลดไฟล์ Word (.docx), Excel (.xlsx), PDF, รูปภาพ หรือไฟล์ Text ให้บอทอ่านและวิเคราะห์ได้
+- **Slash Commands**: มีคำสั่ง `/clear`, `/reload_knowledge`, `/activate`, `/deactivate`, `/help`
+- **ระบบ Quota Fallback**: สลับโมเดลสำรองอัตโนมัติเมื่อโมเดลหลักติด Limit
 
-### 1. ตั้งค่า Workspace ใน IDE ของคุณ
-เพื่อการเขียนโค้ดและจัดการไฟล์ที่สะดวกขึ้น แนะนำให้ตั้งค่าโฟลเดอร์นี้เป็น Workspace หลัก:
-* เปิด IDE ของคุณ (เช่น VS Code หรือ Cursor)
-* เปิดโฟลเดอร์: `C:\Users\ya\.gemini\antigravity\scratch\discord_gemini_bot`
+---
 
-### 2. ติดตั้ง Library ที่จำเป็น (Dependencies)
-เปิด Terminal หรือ Command Prompt ในโฟลเดอร์นี้ แล้วรันคำสั่ง:
-```bash
-pip install -r requirements.txt
+## 📁 โครงสร้างคลังความรู้ (`knowledge/`)
+```text
+knowledge/
+├── 00_system_role.md      # บุคลิก กฎการตอบ และ Tone of Voice
+├── 01_cbtu_overview.md    # ข้อมูลทั่วไปของศูนย์ CBTU / พันธกิจ
+├── 02_courses_services.md # รายละเอียดหลักสูตร อบรม และบริการให้คำปรึกษา
+└── 03_faq.md              # คำถาม-คำตอบที่พบบ่อย (Q&A)
 ```
-
-### 3. ตั้งค่า API Key ของ Gemini
-1. ไปสมัครรับ API Key ฟรีที่: [Google AI Studio](https://aistudio.google.com/)
-2. เปิดไฟล์ `.env` ในโปรเจกต์นี้
-3. แทนที่ตัวอักษร `YOUR_GEMINI_API_KEY_HERE` ด้วย API Key จริงที่คุณได้มา
-   * ตัวอย่างในไฟล์ `.env`:
-     ```env
-     DISCORD_TOKEN=YOUR_DISCORD_BOT_TOKEN_HERE
-     GEMINI_API_KEY=YOUR_GEMINI_API_KEY_HERE
-     ```
-
-### 4. เปิดใช้งานบอต
-รันบอตผ่าน Terminal ด้วยคำสั่ง:
-```bash
-python bot.py
-```
+*สามารถเพิ่มหรือแก้ไขไฟล์ `.md`, `.txt`, `.json` ในโฟลเดอร์ `knowledge/` ได้ตลอดเวลา แล้วใช้คำสั่ง `/reload_knowledge` ใน Discord ได้ทันที*
 
 ---
 
-## ⚙️ การตั้งค่าที่จำเป็นใน Discord Developer Portal (ห้ามลืม!)
-หากเปิดบอตแล้วแชทหาบอตแล้วบอตไม่ตอบ หรือบอตสตาร์ทไม่ผ่าน ให้เช็กสองจุดนี้ใน [Discord Developer Portal](https://discord.com/developers/applications):
+## 🛠️ การติดตั้งและรันในเครื่อง (Local Setup)
 
-1. **เปิด Gateway Intents**:
-   * ไปที่ Application ของคุณ -> เมนู **Bot**
-   * เลื่อนลงมาหาหัวข้อ **Privileged Gateway Intents**
-   * เปิดสวิตช์ **Message Content Intent** (จำเป็นมาก เพื่อให้บอตสามารถมองเห็นข้อความที่พิมพ์ในแชนแนลได้)
-   * กด **Save Changes**
-
-2. **สิทธิ์ในการเชิญบอต (Permissions)**:
-   * เวลาสร้างลิงก์เชิญ (Invite URL) จากเมนู **Installation** หรือ **OAuth2** ให้เลือก:
-     * Scopes: `bot`
-     * Bot Permissions: `Send Messages`, `Read Message History`, `View Channel`, `Read Messages/View Channels`
-
----
-
-## 💬 วิธีการคุยกับบอต
-* **ในห้องแชทธรรมดา**: พิมพ์แท็กบอตแล้วตามด้วยข้อความ เช่น `@MyBot ช่วยแต่งกลอนเกี่ยวกับท้องฟ้าหน่อย`
-* **ในแชทส่วนตัว (DM)**: สามารถพิมพ์ข้อความคุยได้เลยโดยไม่ต้องแท็กบอต
-* บอตจะจำบทสนทนาก่อนหน้าในห้องแชทนั้นๆ ทำให้สามารถคุยโต้ตอบต่อเนื่องกันได้ (จำ Context)
+1. ติดตั้ง Dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+2. คัดลอก `.env.example` เป็น `.env` แล้วใส่คีย์:
+   ```env
+   DISCORD_TOKEN=YOUR_DISCORD_TOKEN
+   GEMINI_API_KEY=YOUR_GEMINI_API_KEY
+   MODEL_NAME=gemini-2.5-flash
+   FALLBACK_MODEL_NAME=gemini-2.0-flash
+   ```
+3. รันบอต:
+   ```bash
+   python bot.py
+   ```
