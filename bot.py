@@ -67,6 +67,38 @@ GENERAL_SYSTEM_INSTRUCTION = """คุณคือผู้ช่วย AI แ�
      **สำคัญมาก**: ห้ามลืมพิมพ์แท็กนี้เด็ดขาดเพื่อให้ระบบนำเนื้อหาทั้งหมดส่งเข้าอีเมลจริง
 """
 
+# Dynamic Knowledge Base Loader
+KNOWLEDGE_DIR = "knowledge"
+
+def load_knowledge_base():
+    """Reads all markdown, txt, and json files from the knowledge directory."""
+    if not os.path.exists(KNOWLEDGE_DIR):
+        return ""
+    
+    knowledge_texts = []
+    for filename in sorted(os.listdir(KNOWLEDGE_DIR)):
+        filepath = os.path.join(KNOWLEDGE_DIR, filename)
+        if os.path.isfile(filepath) and not filename.startswith(".") and filename.lower() != "readme.md":
+            ext = os.path.splitext(filename)[1].lower()
+            if ext in [".md", ".txt", ".json"]:
+                try:
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        content = f.read().strip()
+                        if content:
+                            knowledge_texts.append(f"--- [เอกสารความรู้: {filename}] ---\n{content}")
+                except Exception as e:
+                    print(f"Error loading knowledge file {filename}: {e}")
+                    
+    if knowledge_texts:
+        return "\n\n=== 📚 CBTU KNOWLEDGE BASE & GUIDELINES (คลังความรู้มาตรฐาน CBTU) ===\n" + "\n\n".join(knowledge_texts) + "\n===================================================================\n"
+    return ""
+
+def get_full_general_instruction():
+    knowledge_str = load_knowledge_base()
+    if knowledge_str:
+        return f"{GENERAL_SYSTEM_INSTRUCTION}\n\n{knowledge_str}"
+    return GENERAL_SYSTEM_INSTRUCTION
+
 # SYSTEM INSTRUCTION 2: Professional Tech Article Writer (For /article and Scheduled Tasks)
 ARTICLE_SYSTEM_INSTRUCTION = """คุณคือ AI นักเขียนบทความทางเทคโนโลยีและวิทยาการคอมพิวเตอร์ระดับมืออาชีพ (Professional Tech Article Writer) หน้าที่ของคุณคือสร้างบทความภาษาไทยที่มีคุณภาพสูง น่าอ่าน มีสไตล์และรูปแบบ (Format) ตรงตามเกณฑ์แนวทางการเขียนและจัดรูปแบบบทความ (My Article Guidelines) ดังนี้อย่างเคร่งครัด:
 
@@ -517,7 +549,7 @@ def get_chat_session(channel_id):
         chat_models[channel_id] = MODEL_NAME
         chat_sessions[channel_id] = client.aio.chats.create(
             model=MODEL_NAME,
-            config=types.GenerateContentConfig(system_instruction=GENERAL_SYSTEM_INSTRUCTION)
+            config=types.GenerateContentConfig(system_instruction=get_full_general_instruction())
         )
     return chat_sessions[channel_id]
 
@@ -791,22 +823,30 @@ async def clear_slash(interaction: discord.Interaction):
     chat_models[interaction.channel.id] = MODEL_NAME
     chat_sessions[interaction.channel.id] = client.aio.chats.create(
         model=MODEL_NAME,
-        config=types.GenerateContentConfig(system_instruction=GENERAL_SYSTEM_INSTRUCTION)
+        config=types.GenerateContentConfig(system_instruction=get_full_general_instruction())
     )
     await interaction.response.send_message("🧹 **ล้างประวัติการคุยในช่องนี้เรียบร้อยแล้วครับ!** เริ่มหัวข้อใหม่ได้เลย")
+
+# COMMAND: /reload_knowledge
+@bot.tree.command(name="reload_knowledge", description="รีโหลดคลังความรู้และเอกสารในโฟลเดอร์ knowledge")
+async def reload_knowledge_slash(interaction: discord.Interaction):
+    chat_sessions.clear()
+    chat_models.clear()
+    files_count = len([f for f in os.listdir(KNOWLEDGE_DIR) if os.path.isfile(os.path.join(KNOWLEDGE_DIR, f)) and f.lower() != "readme.md"]) if os.path.exists(KNOWLEDGE_DIR) else 0
+    await interaction.response.send_message(f"📚 **รีโหลดคลังความรู้เรียบร้อยแล้ว!**\nอ่านไฟล์ความรู้จาก `knowledge/` ทั้งหมด `{files_count}` ไฟล์ และอัปเดตระบบ AI เรียบร้อยครับ")
 
 # COMMAND: /help
 @bot.tree.command(name="help", description="แสดงคำสั่งทั้งหมดของบอต")
 async def help_slash(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="📝 บอตเขียนบทความ AI Article Bot",
-        description="บอตช่วยเขียนบทความภาษาไทยสไตล์บล็อกเกอร์เทคโนโลยีระดับมืออาชีพ ขับเคลื่อนด้วย Gemini 3.5 Flash (รองรับระบบคำสั่ง Slash Commands `/`)",
+        title="📝 บอต CBTU YA AI Assistant & Article Writer",
+        description="บอตผู้ช่วยอัจฉริยะ CBTU และเขียนบทความภาษาไทยระดับมืออาชีพ ขับเคลื่อนด้วย Gemini (รองรับระบบคำสั่ง Slash Commands `/`)",
         color=discord.Color.dark_green()
     )
     embed.add_field(
-        name="✍️ คำสั่งสร้างบทความ",
+        name="✍️ คำสั่งสร้างบทความและการแชท",
         value="`/article <หัวข้อ>` - สั่งให้บอตเริ่มเขียนบทความตามหัวข้อที่คุณต้องการ\n"
-              "หรือเพียงแค่พิมพ์ข้อความทักทาย/สอบถามในห้องแชท (ในห้องที่เปิด auto-respond หรือแชทส่วนตัว DM) บอตก็จะช่วยคุยและตอบในฐานะผู้ช่วยทั่วไปที่เป็นมิตร",
+              "หรือเพียงแค่พิมพ์ข้อความทักทาย/สอบถามในห้องแชท บอตจะตอบคำถามโดยอ้างอิงจากคลังความรู้ CBTU",
         inline=False
     )
     embed.add_field(
@@ -817,8 +857,9 @@ async def help_slash(interaction: discord.Interaction):
         inline=False
     )
     embed.add_field(
-        name="🧹 คำสั่งจัดการแชท",
+        name="🧹 คำสั่งจัดการแชทและความรู้",
         value="`/clear` - ล้างประวัติการคุยในช่องแชทปัจจุบัน เพื่อเริ่มหัวข้อใหม่ 🧹\n"
+              "`/reload_knowledge` - รีโหลดคลังความรู้ในโฟลเดอร์ `knowledge/` 📚\n"
               "`/help` - แสดงคำสั่งทั้งหมดของบอต 📄",
         inline=False
     )
@@ -950,7 +991,7 @@ async def on_message(message):
                             chat_models[message.channel.id] = FALLBACK_MODEL_NAME
                             chat_sessions[message.channel.id] = client.aio.chats.create(
                                 model=FALLBACK_MODEL_NAME,
-                                config=types.GenerateContentConfig(system_instruction=GENERAL_SYSTEM_INSTRUCTION)
+                                config=types.GenerateContentConfig(system_instruction=get_full_general_instruction())
                             )
                             chat = chat_sessions[message.channel.id]
                             response = await chat.send_message(contents)
@@ -965,7 +1006,7 @@ async def on_message(message):
                         chat_models[message.channel.id] = FALLBACK_MODEL_NAME
                         chat_sessions[message.channel.id] = client.aio.chats.create(
                             model=FALLBACK_MODEL_NAME,
-                            config=types.GenerateContentConfig(system_instruction=GENERAL_SYSTEM_INSTRUCTION)
+                            config=types.GenerateContentConfig(system_instruction=get_full_general_instruction())
                         )
                         chat = chat_sessions[message.channel.id]
                         response = await chat.send_message(contents)
