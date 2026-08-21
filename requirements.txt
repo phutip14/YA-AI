@@ -1,0 +1,7 @@
+discord.py
+google-genai
+python-dotenv
+pillow
+docx2txt
+python-docx
+openpyxl

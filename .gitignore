@@ -1,0 +1,17 @@
+# Environment variables (Contains sensitive Bot Tokens)
+.env
+.env.local
+
+# Runtime database/state
+active_channels.json
+
+# Python caching
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environment (if any)
+venv/
+.venv/
+env/
